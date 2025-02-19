@@ -1,3 +1,4 @@
+import { checkImagesExist, checkUserExist } from "../common/confim/confim.js";
 import { BadRequestException } from "../common/helpers/error.helper.js";
 import prisma from "../common/prisma/init.prisma.js";
 
@@ -43,6 +44,8 @@ const imageService = {
     const { id } = req.params;
     if (!id) throw new BadRequestException(`Please provide the video ID`);
 
+    await checkImagesExist(id);
+
     const comment = await prisma.comments.findMany({
       where: {
         images_id: +id,
@@ -57,15 +60,21 @@ const imageService = {
   },
   isSaved: async (req) => {
     const { id } = req.params;
-    if (!id) throw new BadRequestException(`Please provide the image ID`);
     const { users_id } = req.query;
-    console.log({ users_id });
+    if (!id) throw new BadRequestException(`Please provide the image ID`);
     if (!users_id) throw new BadRequestException(`Please provide the user ID`);
+
+    await checkImagesExist(id);
+    await checkUserExist(users_id);
 
     const isSaved = await prisma.saved_image.findFirst({
       where: {
         users_id: +users_id,
         images_id: +id,
+      },
+      include: {
+        users: { select: { full_name: true } },
+        images: { select: { title: true } },
       },
     });
     return { saved: !!isSaved };
@@ -76,13 +85,8 @@ const imageService = {
     if (!content || !users_id)
       throw new BadRequestException(`Content anb user_id are required`);
 
-    const imageExist = await prisma.images.findUnique({
-      where: { images_id: +id },
-    });
-    if (!imageExist) throw new BadRequestException(`Image does not exist`);
-
-    const userExist = await prisma.users.findUnique({ where: { users_id } });
-    if (!userExist) throw new BadRequestException(`User does not exist`);
+    await checkImagesExist(id);
+    await checkUserExist(users_id);
 
     const newComment = await prisma.comments.create({
       data: {
@@ -97,6 +101,12 @@ const imageService = {
     const { userId } = req.params;
     if (!userId) throw new BadRequestException(`Please provide the user Id`);
 
+    const userExist = await prisma.saved_image.findFirst({
+      where: { users_id: +userId },
+    });
+    if (!userExist)
+      throw new BadRequestException(`User has not saved the image`);
+
     const images = await prisma.saved_image.findMany({
       where: { users_id: +userId },
       include: { images: true },
@@ -107,6 +117,13 @@ const imageService = {
   createImageByUserId: async (req) => {
     const { userId } = req.params;
     if (!userId) throw new BadRequestException(`Please provide the user Id`);
+
+    const userExist = await prisma.images.findFirst({
+      where: { users_id: +userId },
+    });
+    if (!userExist)
+      throw new BadRequestException(`User has not created the photo`);
+
     const images = await prisma.images.findMany({
       where: { users_id: +userId },
     });
@@ -117,10 +134,7 @@ const imageService = {
     const { id } = req.params;
     if (!id) throw new BadRequestException(`Please provide the video ID`);
 
-    const imageExist = await prisma.images.findUnique({
-      where: { images_id: +id },
-    });
-    if (!imageExist) throw new BadRequestException(`Images does not exist`);
+    await checkImagesExist(id);
     await prisma.images.delete({ where: { images_id: +id } });
     return `Delate image successfully`;
   },
